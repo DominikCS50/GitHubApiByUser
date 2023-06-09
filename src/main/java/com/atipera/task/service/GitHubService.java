@@ -1,5 +1,6 @@
 package com.atipera.task.service;
 
+import com.atipera.task.controller.GitHubController;
 import com.atipera.task.model.Branch;
 import com.atipera.task.model.Repository;
 import org.springframework.http.HttpHeaders;
@@ -7,6 +8,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
 import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -40,12 +42,19 @@ public class GitHubService {
     }
 
     public List<Repository> getRepositories(String username) {
-        return webClient.get()
+        Flux<Repository> repositoryFlux = webClient.get()
                 .uri("/users/{username}/repos?type=all", username)
                 .retrieve()
                 .bodyToFlux(Repository.class)
-                .filter(repository -> !repository.isFork())
-                .collectList()
+                .filter(repository -> !repository.isFork());
+
+        return repositoryFlux.collectList()
+                .onErrorMap(throwable -> {
+                    if (throwable.getMessage().contains("404 Not Found")) {
+                        throw new GitHubController.UserNotFoundException("The requested GitHub user does not exist.");
+                    }
+                    return throwable;
+                })
                 .block();
     }
 
